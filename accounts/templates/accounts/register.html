@@ -1,0 +1,26 @@
+{% extends 'accounts/base.html' %}
+{% load static %}
+{% block title %}
+{% endblock  %}
+{% block css %}
+{% endblock  %}
+{% block body %}
+<main id="main">
+  <div class="container" id="sign-up">
+    <div class="row">
+      <div class="col-md-6 col-sm-12 col-xs-12">
+        <h1>Sign Up</h1>
+        <div class="form-sign">
+          {{ form.non_field_errors }}
+            <form method="POST">{% csrf_token %}
+                {{form.as_p}}
+
+                <button type="button" class="btn btn-primary" data-toggle="button" aria-pressed="false" autocomplete="off"> Submit
+                              </button>
+            </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+{% endblock  %}

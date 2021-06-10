@@ -1,0 +1,42 @@
+{% extends 'accounts/base.html' %}
+{% block title %} Add bank account {% endblock title %}
+
+{% block body %}
+<div class="container"><br>
+    <h4>Add New Bank Account:</h4><br>
+    <form method="POST" {% url 'reg' %}>
+        {% csrf_token %}
+        <div class="mb-3">
+            <input type="text" class="form-control" id="name" name="name" placeholder="Account Holder's Name">
+        </div>
+         <div class="mb-3">
+            <input type="text" class="form-control" id="phone" name="phone" placeholder="Phone Number">
+        </div>
+        <div class="mb-3">
+            <input type="text" class="form-control" id="account_no" name="account_no" placeholder="Account Number">
+        </div>
+        <div class="mb-3">
+            <input type="text" class="form-control" id="account_bal" name="account_bal" placeholder="Account Balance">
+        </div>
+        <div class="mb-3">
+            <input type="text" class="form-control" id="bank_br" name="bank_br" placeholder="Bank Branch">
+        </div>
+        <div class="mb-3">
+            <input type="text" class="form-control" id="br_id" name="br_id" placeholder="Branch ID">
+        </div>
+        <div class="mb-3">
+            <input type="text" class="form-control" id="br_add" name="br_add" placeholder="Branch Address">
+        </div>
+        <div class="mb-3">
+            <input type="text" class="form-control" id="ifsc" name="ifsc" placeholder="IFSC Code">
+        </div>
+        <div class="mb-3">
+            <input type="text" class="form-control" id="your_add" name="your_add" placeholder="Your Address">
+        </div>
+        <div class="mb-3">
+            <input type="text" class="form-control" id="pin" name="pin" placeholder="PIN Code">
+        </div>
+        <button type="submit" class="btn btn-primary">Submit</button>
+    </form>
+</div>
+{% endblock %}

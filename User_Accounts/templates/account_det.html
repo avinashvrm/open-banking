@@ -1,0 +1,66 @@
+{% extends 'accounts/base.html' %}
+{% block title %} Profile! {% endblock title %}
+
+{% block body %}
+<div class="container"><br>
+    <h4>Find Accounts:</h4><br>
+    <form method="POST" {% url 'profile' %}>
+        {% csrf_token %}
+        <div>
+            <label for="find" class="form-label">Find By</label>
+
+            <!-- {{ form }} -->
+
+            <select class="form-select" aria-label="Default select example" id="find_" name="find_">
+                <option selected>Choose Below</option>
+                <option value="1">Account Number</option>
+                <option value="2">Branch Name</option>
+                <option value="3">Branch ID</option>
+                <option value="4">IFSC Code</option>
+                <option value="5">Holders Name</option>
+            </select>
+            <div>   
+                <br><br>
+                <label for="find" class="form-label">Enter details to be searched</label>
+                <div class="mb-3">
+                    <input type="text" class="form-control" id="find" name="find">
+                </div>
+                <button type="submit" class="btn btn-primary">Submit</button>
+    </form>
+</div>
+
+<br /><br />
+<div class="container">
+    <div class="row">
+        <div class="col-12">
+            <h4>Your Account Details</h4>
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th scope="col">SNo.</th>
+                        <th scope="col">Account Number</th>
+                        <th scope="col">Branch ID</th>
+                        <th scope="col">Branch Name</th>
+                        <th scope="col">IFSC Code</th>
+                        <th scope="col">Holder's Name</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in list %}
+                    <tr>
+                        <th scope="row">{{ forloop.counter }}</th>
+                        <td scope="row">{{ item.account_no }}</td>
+                        <td scope="row">{{ item.br_id }}</td>
+                        <td scope="row">{{ item.bank_br }}</td>
+                        <td scope="row">{{ item.ifsc }}</td>
+                        <td scope="row">{{ item.name }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+        </div>
+    </div>
+</div>
+
+{% endblock %}
