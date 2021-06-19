@@ -1,122 +1,308 @@
-from django.shortcuts import render, HttpResponse, redirect
-
-from django.urls import reverse_lazy, reverse
-from django.views.generic.base import TemplateView
-from .forms import RegistrationForm, ContactUsForm
-from django.contrib.auth.views import LoginView, LogoutView
-from django.views.generic import CreateView
-from django.contrib.auth.decorators import login_required
-from .models import CustomUser
-
-from openbanking import settings
-from django.core.mail import EmailMessage
-from .tokens import account_activation_token
-from django.core.mail import send_mail
+from django.core.mail.message import EmailMessage
+from django.shortcuts import render
+from rest_framework import generics, serializers, status, views, permissions
+from .serializers import RegisterSerializer, EmailVerificationSerializer, UpdateSerializer, ResetToken, LoginSerializer, OTPVerificationSerializer, ResetPasswordEmailSerializer
+from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
+from .models import CustomUser,CustomUserManager
 from django.contrib.sites.shortcuts import get_current_site
-from django.utils.encoding import force_bytes, force_text
-from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
-from django.template.loader import render_to_string
-from django.contrib.auth import authenticate, login, logout
-from django.contrib import messages
+from django.urls import reverse
+from django.conf import settings
+import random
+import string
+import smtplib
+
+import jwt
+
+from email.message import EmailMessage
+from django.template.loader import get_template
+from datetime import datetime, timezone
+
+from .utils import  Util
+
+# from drf_yasg.utils import swagger_auto_schema
+# from drf_yasg import openapi
+
+class RegisterView(generics.GenericAPIView):
+
+    serializer_class = RegisterSerializer
+
+    def post(self, request):
+
+        user = request.data
+        serializer = self.serializer_class(data=user)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        user_data = serializer.data
+
+        user = CustomUser.objects.get(email=user_data['email'])
+        token = RefreshToken.for_user(user).access_token
 
 
-# Create your views here.
+        current_site = get_current_site(request).domain
+        relativeLink = reverse('email-verify')
+
+        absurl = 'http://'+current_site+relativeLink+"?token="+str(token)
+        email_body = 'Hi' +user.username+ 'Use Link bellow to verify \n' + absurl
+        data = {'email_body' : email_body,'to_email': user.email, 'email_subject' : 'Verify your email'}
+        Util.sent_email(data)
+        # html_message = get_template('email.html').render(
+        #     {'link': absurl, 'user': user.username, 'email': user.email})
 
 
-class Index(TemplateView):
-    template_name = 'accounts/index.html'
+        # msg = EmailMessage()
+        # msg['Subject'] = 'Email Verification'
+        # msg['From'] = settings.EMAIL_HOST_USER
+        # msg['To'] = user.email
+        # msg.add_alternative(html_message, subtype='html')
+        # server = smtplib.SMTP("tkrs2620@gmail.com", 587)
+        # server.starttls()
+        # server.login(settings.EMAIL_HOST_USER, settings.EMAIL_HOST_PASSWORD)
+        # server.send_message(msg)
+        # server.quit()
+
+        return Response(user_data, status=status.HTTP_201_CREATED)
 
 
-def contactus2(request):
-    if request.method == 'POST':
-        form = ContactUsForm(request.POST)
-        if form.is_valid():  # clean_data
-            if len(form.cleaned_data.get('query')) > 10:
-                form.add_error('query', 'Query length is not right')
-                return render(request, 'accounts/contactUs.html', {'form': form})
-            form.save()
-            return HttpResponse("Thank You")
+class VerifyEmail(generics.GenericAPIView):
+
+    serializer_class = EmailVerificationSerializer
+
+    #token_param_config = openapi.Parameter('token', in_=openapi.IN_QUERY,description='Enter Token for Email Verification', type=openapi.TYPE_STRING)
+
+    #@swagger_auto_schema(manual_parameters=[token_param_config])
+    def get(self,request):
+        token = request.GET.get('token')
+        # print(token)
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY,algorithms='HS256')
+
+            user = CustomUser.objects.get(id=payload['user_id'])
+            # print(user)
+            if not user.is_verified:
+                user.is_verified = True
+                user.save()
+            return render(request, 'Verified.html', status=status.HTTP_200_OK)
+            #return Response({'email': 'Successfully activated'}, status=status.HTTP_200_OK)
+        except jwt.ExpiredSignatureError as identifier:
+
+            context = {'message': "Activation Expired"}
+            return render(request, 'InvalidToken.html', context)
+            #return Response({'error': 'Activation Expired'}, status=status.HTTP_400_BAD_REQUEST)
+        except jwt.exceptions.DecodeError as identifier:
+            # user.delete()
+            context = {'message': "Invalid Token"}
+            return render(request, 'InvalidToken.html', context)
+            #return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class LoginView(generics.GenericAPIView):
+
+    serializer_class = LoginSerializer
+
+
+    def post(self, request):
+        user = request.data
+        serializer = self.serializer_class(data=user)
+        serializer.is_valid(raise_exception=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+        #user_data = serializer.data
+        # user = User.objects.get(email=user_data['email'])
+        # key = random.randint(100000, 999999)
+        # user.otp = key
+        # time = datetime.now(timezone.utc)
+        # user.otp_time = time
+        # user.save()
+        # msg = EmailMessage()
+        # msg['Subject'] = 'Login OTP'
+        # msg['From'] = settings.EMAIL_HOST_USER
+        # msg['To'] = user.email
+        # html_message = get_template('otp.html').render(
+        #     {'link': key, 'user': user.username})
+        # msg.add_alternative(html_message, subtype='html')
+        # server = smtplib.SMTP("mail.fintract.co.uk", 587)
+        # server.starttls()
+        # server.login(settings.EMAIL_HOST_USER, settings.EMAIL_HOST_PASSWORD)
+        # server.send_message(msg)
+        # server.quit()
+
+        #return Response({"id": user.id}, status=status.HTTP_200_OK)
+
+
+class VerifyOTP(views.APIView):
+
+    serializer_class = OTPVerificationSerializer
+    # permission_classes=(permissions.IsAuthenticated,)
+    def post(self, request, pk):
+        otp = request.POST.get('otp')
+        user = User.objects.get(id=pk)
+
+        # Calculating time difference
+        current_time = datetime.now(timezone.utc)
+        otp_time = user.otp_time
+        diff_min = ((current_time-otp_time).total_seconds())/60
+
+        if diff_min > 10:
+            user.otp = 0
+            user.save()
+            return Response({'error': 'Sesssion Expired, Login again'}, status=status.HTTP_400_BAD_REQUEST)
+        if otp == user.otp:
+            # user.is_loggedin = True
+            user.otp = 0
+            user.save()
+            context = {"message": 'Successfully Logged In', "id": user.id, "email": user.email, "username": user.username,
+                       "country": user.country, "password": user.password, "verification_status": user.is_verified}
+            return Response(context, status=status.HTTP_200_OK)
         else:
-            if len(form.cleaned_data.get('query')) > 10:
-                #form.add_error('query', 'Query length is not right')
-                form.errors['__all__'] = 'Query length is not right. It should be in 10 digits.'
-            return render(request, 'accounts/contactUs.html', {'form': form})
-    return render(request, 'accounts/contactUs.html', {'form': ContactUsForm})
+            return Response({'error': 'Invalid OTP'}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class RegisterView(CreateView):
-    template_name = 'accounts/register.html'
-    form_class = RegistrationForm
-    success_url = reverse_lazy('login')
-
-    # def post(self, request, *args, **kwargs):
-    #     #form = RegistrationForm(request.POST)
-    #     response = super().post(request, *args, **kwargs)
-    #     user_email = request.POST.get('email')
-
-    #     if response.status_code == 200:
-    #         user = CustomUser.objects.get(email = user_email)
-    #         user.is_active = False
-    #         user.save()
-    #         current_site = get_current_site(request)
-    #         mail_subject = 'Activate your account.'
-    #         message = render_to_string('accounts/registration/acc_active_email.html', {
-    #             'user': user,
-    #             'domain': current_site.domain,
-    #             'uid':urlsafe_base64_encode(force_bytes(user.pk)),
-    #             'token':account_activation_token.make_token(user),
-    #         })
-    #         print(message)
-    #         to_email = user_email
-    #         #form = RegistrationForm(request.POST)   # here we are again calling all its validations
-    #         form = self.get_form()
-    #         try:
-    #             send_mail(
-    #                 subject=mail_subject,
-    #                 message=message,
-    #             from_email=settings.EMAIL_HOST_USER,
-    #             recipient_list= [to_email],
-    #             fail_silently=False,    # if it fails due to some error or email id then it get silenced without affecting others
-    #         )
-    #         messages.success(request, "link has been sent to your email id. please check your inbox and if its not there check your spam as well.")
-    #         return self.render_to_response({'form':form})
-    #     except:
-    #         form.add_error('', 'Error Occured In Sending Mail, Try Again')
-    #         messages.error(request, "Error Occured In Sending Mail, Try Again")
-    #         return self.render_to_response({'form':form})
-    # else:
-    #     return response
+class GetUserInfo(views.APIView):
 
 
-class LoginViewUser(LoginView):
-    template_name = "accounts/login.html"
+    def get(self, request, pk):
 
-class LogoutViewUser(LogoutView):
-    success_url = reverse_lazy('index')
+        try:
+            user = User.objects.get(id=pk)
+        except User.DoesNotExist:
+            user = None
 
+        if  not user:
+            return Response({'error': 'Invalid id'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            context = {"id": user.id, "email": user.email, "username": user.username,
+                       "country": user.country,"phone":user.phone,"gender":user.gender, "password": user.password, "verification_status": user.is_verified}
+            return Response(context, status=status.HTTP_200_OK)
+            
 
-def activate(request, uidb64, token):
-    try:
-        uid = force_text(urlsafe_base64_decode(uidb64))
-        user = CustomUser.objects.get(pk=uid)
-    except(TypeError, ValueError, OverflowError, CustomUser.DoesNotExist) as e:
-        user = None
-    if user is not None and account_activation_token.check_token(user, token):
-        user.is_active = True
+class ResetPassword(generics.GenericAPIView):
+
+    serializer_class = ResetPasswordEmailSerializer
+
+    def post(self, request):
+        user_mail = request.POST.get('email')
+        try:
+            user = User.objects.get(email=user_mail)
+        except User.DoesNotExist:
+            user = None
+
+        if not user:
+            return Response({'error': 'Invalid credentials, try again'}, status=status.HTTP_400_BAD_REQUEST)
+        if not user.is_active:
+            return Response({'error': 'Account Dissabled, contact admin'}, status=status.HTTP_400_BAD_REQUEST)
+        if not user.is_verified:
+            return Response({'error': 'Email is not Verified, Create a new account'}, status=status.HTTP_400_BAD_REQUEST)
+
+        N = 10
+        # using random.choices()
+        # generating random strings
+        res = ''.join(random.choices(
+            string.ascii_uppercase + string.digits, k=N))
+        password = str(res)
+        user.set_password(password)
         user.save()
-        login(request, user)
-        messages.success(request, "Successfully Logged In")
-        return redirect(reverse_lazy('index'))
-        # return HttpResponse('Thank you for your email confirmation. Now you can login your account.')
-    else:
-        return HttpResponse('Activation link is invalid or your account is already Verified! Try To Login')
+        msg = EmailMessage()
+        msg['Subject'] = 'New Password'
+        msg['From'] = settings.EMAIL_HOST_USER
+        msg['To'] = user.email
+        html_message = get_template('password.html').render(
+            {'link': password, 'user': user.username})
+        msg.add_alternative(html_message, subtype='html')
+        server = smtplib.SMTP("mail.fintract.co.uk", 587)
+        server.starttls()
+        server.login(settings.EMAIL_HOST_USER, settings.EMAIL_HOST_PASSWORD)
+        server.send_message(msg)
+        server.quit()
 
-# @login_required(login_url='login')
-def logoutUser(request):
-    logout(request)
-    return redirect('/login')
+        return Response({'password': 'Successfully Changed'}, status=status.HTTP_200_OK)
 
-# @login_required(login_url='login/')
-def profile(request):
-    # return render(request, 'accounts/profile.html')
-    return render(request, 'account_det.html')
+
+class NewToken(generics.GenericAPIView):
+
+    serializer_class = ResetToken
+
+    def post(self, request):
+        user_mail = request.POST.get('email')
+        try:
+            user = User.objects.get(email=user_mail)
+        except User.DoesNotExist:
+            user = None
+
+        if not user:
+            return Response({'error': 'Invalid credentials, try again'}, status=status.HTTP_400_BAD_REQUEST)
+        if not user.is_active:
+            return Response({'error': 'Account Dissabled, contact admin'}, status=status.HTTP_400_BAD_REQUEST)
+
+        token = RefreshToken.for_user(user).access_token
+        current_site = get_current_site(request).domain
+        relativeLink = reverse('email-verify')
+
+        absurl = 'http://'+current_site+relativeLink+"?token="+str(token)
+        html_message = get_template('email.html').render(
+            {'link': absurl, 'user': user.username, 'email': user.email})
+
+        msg = EmailMessage()
+        msg['Subject'] = 'Email Verification'
+        msg['From'] = settings.EMAIL_HOST_USER
+        msg['To'] = user.email
+        msg.add_alternative(html_message, subtype='html')
+        server = smtplib.SMTP("mail.fintract.co.uk", 587)
+        server.starttls()
+        server.login(settings.EMAIL_HOST_USER, settings.EMAIL_HOST_PASSWORD)
+        server.send_message(msg)
+        server.quit()
+        return Response({'message': 'New token sent'}, status=status.HTTP_201_CREATED)
+
+
+class Update(generics.GenericAPIView):
+
+    serializer_class = UpdateSerializer
+
+    def put(self, request, pk):
+        username = request.POST.get('username')
+        email = request.POST.get('email')
+        password = request.POST.get('password')
+        country = request.POST.get('country')
+        gender=request.POST.get('gender')
+        phone=request.POST.get('phone')
+        user = User.objects.get(id=pk)
+
+        if username != "":
+            user.username = username
+        if email != "":
+            user.email = email
+        if country != "":
+            user.country = country
+        if gender != "":
+            user.gender = gender
+        if phone != "":
+            user.phone = phone
+        if password != "":
+            # print(len(password))
+            if len(password) < 7:
+                return Response({'error': "Password too short"},
+                                status=status.HTTP_400_BAD_REQUEST)
+            else:
+                user.set_password(password)
+        user.save()
+        return Response({'message': "Updated Successfully"}, status=status.HTTP_201_CREATED)
+
+
+class DeleteUser(views.APIView):
+
+
+    def delete(self, request, pk):
+
+        try:
+            user = User.objects.get(id=pk)
+        except User.DoesNotExist:
+            user = None
+
+        if  not user:
+            return Response({'error': 'Invalid id'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            user.delete()
+            context = {"msg": "Account Successfully deleted"}
+            return Response(context, status=status.HTTP_200_OK)
